@@ -20,27 +20,39 @@ TARGETS = {
 }
 
 
+# What a probe starts on, before anything's chosen: never nothing
+DEFAULT_MEAT = "Beef"
+DEFAULT_DONENESS = "Medium Well"
+
+
 @dataclass
 class ProbeChoice:
-    """What's chosen for a probe, which its two entities share."""
+    """What's chosen for a probe, which its two entities share. Always a doneness its meat has."""
 
     climate: object
-    meat: str | None = None
-    doneness: str | None = None
+    meat: str = DEFAULT_MEAT
+    doneness: str = DEFAULT_DONENESS
     entities: list[SelectEntity] = field(default_factory=list)
 
     def donenesses(self) -> list[str]:
         """Return the donenesses of the chosen meat."""
-        return list(TARGETS.get(self.meat, {}))
+        return list(TARGETS[self.meat])
+
+    def target(self) -> int:
+        """Return the temperature of what's chosen."""
+        return TARGETS[self.meat][self.doneness]
+
+    def settle(self) -> None:
+        """Make the doneness one the meat has: its most done, if not."""
+        if self.doneness not in self.donenesses():
+            self.doneness = self.donenesses()[-1]
 
     async def async_choose(self, meat: str | None = None, doneness: str | None = None) -> None:
-        """Choose, then set the probe's target. A doneness the meat doesn't have becomes its most done."""
+        """Choose, then set the probe's target."""
         self.meat = meat or self.meat
         self.doneness = doneness or self.doneness
-        if self.doneness not in self.donenesses():
-            self.doneness = None if self.doneness is None or self.meat is None else self.donenesses()[-1]
-        if self.meat and self.doneness:
-            await self.climate.async_set_temperature(temperature=TARGETS[self.meat][self.doneness])
+        self.settle()
+        await self.climate.async_set_temperature(temperature=self.target())
         for entity in self.entities:
             entity.async_write_ha_state()
 
@@ -55,6 +67,8 @@ async def async_setup_entry(
     entities = []
     for (device_id, probe_num), climate in climates.items():
         choice = ProbeChoice(climate)
+        # Until a target is set, the next cook starts at what's chosen
+        climate.default_target = choice.target
         pair = [
             ThermoMavenMeat(choice, device_id, probe_num),
             ThermoMavenDoneness(choice, device_id, probe_num),
@@ -87,7 +101,7 @@ class ThermoMavenMeat(ThermoMavenChoice):
     _attr_options = list(TARGETS)
 
     @property
-    def current_option(self) -> str | None:
+    def current_option(self) -> str:
         """Return the chosen meat."""
         return self._choice.meat
 
@@ -95,6 +109,7 @@ class ThermoMavenMeat(ThermoMavenChoice):
         """Restore the meat, without setting a target."""
         if (last_state := await self.async_get_last_state()) is not None and last_state.state in TARGETS:
             self._choice.meat = last_state.state
+            self._choice.settle()
 
     async def async_select_option(self, option: str) -> None:
         """Choose a meat."""
@@ -113,17 +128,17 @@ class ThermoMavenDoneness(ThermoMavenChoice):
         return self._choice.donenesses()
 
     @property
-    def current_option(self) -> str | None:
+    def current_option(self) -> str:
         """Return the chosen doneness."""
         return self._choice.doneness
 
     async def async_added_to_hass(self) -> None:
         """Restore the doneness, without setting a target."""
-        if (last_state := await self.async_get_last_state()) is not None and last_state.state not in (
-            "unknown",
-            "unavailable",
+        if (last_state := await self.async_get_last_state()) is not None and any(
+            last_state.state in donenesses for donenesses in TARGETS.values()
         ):
             self._choice.doneness = last_state.state
+            self._choice.settle()
 
     async def async_select_option(self, option: str) -> None:
         """Choose a doneness."""

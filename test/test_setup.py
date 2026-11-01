@@ -67,6 +67,12 @@ async def test_the_selects_exist_beside_the_climate_entity(hass, request_api):
     assert hass.states.get(climates[0]).state == "heat"
 
 
+async def test_the_selects_never_read_unknown(hass, request_api):
+    assert hass.states.get(select_id(hass, "meat")).state == "Beef"
+    assert hass.states.get(select_id(hass, "doneness")).state == "Medium Well"
+    request_api.assert_not_awaited()
+
+
 async def test_choosing_sets_the_running_cooks_target(hass, request_api):
     await choose(hass, select_id(hass, "meat"), "Beef")
     assert hass.states.get(select_id(hass, "meat")).state == "Beef"

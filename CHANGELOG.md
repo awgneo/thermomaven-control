@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [1.6.1] - 2026-11-01 (fork)
+
+### Fixed
+- Meat and Doneness always hold a real choice, starting at Beef and Medium Well, and never read as unknown. Until a target is set, the next cook starts at that choice.
+
 ## [1.6.0] - 2026-11-01 (fork)
 
 ### Added

@@ -105,6 +105,21 @@ async def test_turning_on_needs_a_target(api):
     api._async_request.assert_not_awaited()
 
 
+async def test_with_no_target_set_a_cook_starts_at_the_default(api):
+    climate = probe_climate(api, IDLE)
+    climate.default_target = lambda: 150
+    assert climate.target_temperature == 150
+    await climate.async_turn_on()
+    assert sent(api)["setParams"] == [{"setTemperature": 1500}]
+
+
+async def test_a_set_target_beats_the_default(api):
+    climate = probe_climate(api, IDLE)
+    climate.default_target = lambda: 150
+    await climate.async_set_temperature(temperature=165)
+    assert climate.target_temperature == 165
+
+
 async def test_turning_on_during_a_cook_starts_nothing(api):
     await probe_climate(api, RUNNING).async_turn_on()
     api._async_request.assert_not_awaited()

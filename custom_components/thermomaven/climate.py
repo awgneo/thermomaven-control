@@ -125,6 +125,8 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         self._probe_num = probe_num
         self._entry_id = entry_id
         self._next_target: float | None = None
+        # What the next cook starts at when no target's been set: the probe's chosen meat and doneness
+        self.default_target = None
 
         self._attr_unique_id = f"{self._device_id}_probe_{probe_num}_climate"
         self._attr_name = f"Probe {probe_num} Control"
@@ -172,7 +174,13 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
             for params in self._probe().get("setParams", []):
                 if (temperature := params.get("setTemperature")) is not None:
                     return temperature / 10
-        return self._next_target
+        return self._idle_target()
+
+    def _idle_target(self) -> float | None:
+        """Return the target the next cook starts at."""
+        if self._next_target is not None:
+            return self._next_target
+        return self.default_target() if self.default_target else None
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -204,7 +212,7 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         """Start a cook at the target, unless one is running."""
         if self._cook_is_running():
             return
-        target = self._next_target
+        target = self._idle_target()
         if target is None:
             raise HomeAssistantError("Set a target before starting a cook")
         state = self._probe().get("cookingState")

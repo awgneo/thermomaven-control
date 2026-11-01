@@ -27,10 +27,15 @@ def target(choice: ProbeChoice) -> int | None:
     return calls.kwargs["temperature"] if calls else None
 
 
-async def test_a_meat_alone_sets_no_target(choice):
-    await choice.async_choose(meat="Beef")
-    assert target(choice) is None
-    assert choice.doneness is None
+async def test_there_is_always_a_choice(choice):
+    assert (choice.meat, choice.doneness) == ("Beef", "Medium Well")
+    assert choice.target() == 150
+
+
+async def test_a_meat_alone_sets_the_target(choice):
+    await choice.async_choose(meat="Pork")
+    assert choice.doneness == "Medium Well"
+    assert target(choice) == 150
 
 
 async def test_meat_and_doneness_set_the_target(choice):
@@ -82,6 +87,12 @@ async def test_the_table_only_gets_hotter():
         assert temperatures == sorted(temperatures)
 
 
+async def test_a_restored_doneness_the_meat_lacks_is_settled(choice):
+    choice.meat, choice.doneness = "Fish", "Rare"
+    choice.settle()
+    assert choice.doneness == "Well Done"
+
+
 async def test_the_first_probe_has_no_number_in_its_names(choice):
     meat = ThermoMavenMeat(choice, "1", 1)
     doneness = ThermoMavenDoneness(choice, "1", 1)
@@ -98,4 +109,4 @@ async def test_the_doneness_options_follow_the_meat(choice):
     doneness = ThermoMavenDoneness(choice, "1", 1)
     await choice.async_choose(meat="Fish")
     assert doneness.options == ["Medium", "Well Done"]
-    assert doneness.current_option is None
+    assert doneness.current_option == "Well Done"
