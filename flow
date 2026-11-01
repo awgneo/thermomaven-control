@@ -25,15 +25,100 @@ thermomaven-lint() {
 }
 
 # ------------------------------------------------------------------------------
+# APKs
+# ------------------------------------------------------------------------------
+
+# The ThermoMaven app the protocol is read from, with its signing certificate (SHA-256), as first seen at
+# 1.9.10 on APKPure: a native Android app whose device screens are a bundled web app
+THERMOMAVEN_PACKAGE="com.auros.thermomaven"
+THERMOMAVEN_CERTIFICATE="019521b9daedc0bd823d79b94955396a4b9c5a6704d637edfcba841efde737bb"
+
+# Prints the SHA-256 digest of the certificate an APK is signed with, through the Android
+# SDK's apksigner (with Android Studio's or Homebrew's JDK when JAVA_HOME isn't set)
+thermomaven-apk-certificate() {
+  local sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+  local signer jdk
+  signer=$(ls -d "$sdk"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)
+  [ -n "$signer" ] || abort "apksigner not found (install the Android SDK build-tools)" 2
+  if [ -z "${JAVA_HOME:-}" ]; then
+    for jdk in "/Applications/Android Studio.app/Contents/jbr/Contents/Home" /opt/homebrew/opt/openjdk; do
+      [ -x "$jdk/bin/java" ] && export JAVA_HOME="$jdk" && break
+    done
+  fi
+  "$signer" verify --print-certs "$1" 2>/dev/null | grep -m 1 "certificate SHA-256 digest" | awk '{print $NF}'
+}
+
+# Fetches the app's latest version from APKPure (through apkeep), checks its certificate, and unpacks it into
+# .apks/: the base APK (app.apk), jadx's decompile (source/) and its web app (web/). APKPure has been caught
+# repackaging apps: this is only read, never installed, and the certificate check refuses anything else.
+thermomaven-build() {
+  local package="$THERMOMAVEN_PACKAGE" dir=".apks" tmp="${TEMPORARY_DIRECTORY:-/tmp/flow}/apk-thermomaven"
+  local tool
+  for tool in apkeep jadx; do
+    command -v "$tool" >/dev/null || abort "$tool not found (brew install apkeep jadx)" 2
+  done
+
+  info "Checking for the latest $package..."
+  local latest
+  latest=$(apkeep -d apk-pure -a "$package" -l 2>/dev/null | grep '^|' | tr -d '| ' | tr ',' '\n' | sort -V | tail -n 1)
+  if [ -z "$latest" ]; then
+    warning "Could not list $package's versions; keeping $dir as is."
+    return 0
+  fi
+  if [ "$latest" = "$(cat "$dir/version.txt" 2>/dev/null)" ] && [ -d "$dir/source/sources" ]; then
+    info "$package is up to date ($latest)."
+    return 0
+  fi
+
+  info "Downloading $package $latest..."
+  rm -rf "$tmp" && mkdir -p "$tmp"
+  apkeep -d apk-pure -o acknowledge_dangers=true -a "$package@$latest" "$tmp" || abort "Failed to download $package $latest." 2
+  local download
+  download=$(ls "$tmp"/*.xapk "$tmp"/*.apk 2>/dev/null | head -n 1)
+  [ -n "$download" ] || abort "apkeep produced no file for $package." 2
+
+  # An XAPK bundles the base APK with its configuration splits
+  local apk="$tmp/$package.apk"
+  if [[ "$download" == *.xapk ]]; then
+    unzip -oq "$download" -d "$tmp/xapk" || abort "Failed to unpack $download." 2
+    cp "$tmp/xapk/$package.apk" "$apk" || abort "No base APK in $download." 2
+  else
+    mv "$download" "$apk"
+  fi
+
+  local signed
+  signed=$(thermomaven-apk-certificate "$apk") || return $?
+  [ "$signed" = "$THERMOMAVEN_CERTIFICATE" ] || abort "$package $latest has another certificate (${signed:-unreadable}); refusing it." 2
+
+  info "Decompiling $package $latest..."
+  rm -rf "$dir" && mkdir -p "$dir"
+  mv "$apk" "$dir/app.apk"
+  # jadx exits non-zero on minor obfuscation errors; the sources directory is what counts
+  jadx -q -d "$dir/source" "$dir/app.apk"
+  [ -d "$dir/source/sources" ] || abort "Failed to decompile $package (no sources directory)." 2
+
+  # The device screens: a web app, zipped inside the APK's assets
+  mkdir -p "$dir/web"
+  unzip -p "$dir/app.apk" 'assets/tm-web-device_*.zip' > "$tmp/web.zip" || abort "No web app in $package." 2
+  unzip -oq "$tmp/web.zip" -d "$dir/web" || abort "Failed to unpack $package's web app." 2
+
+  echo "$latest" > "$dir/version.txt"
+  rm -rf "$tmp"
+  success "Unpacked $package $latest into $dir."
+}
+
+# ------------------------------------------------------------------------------
 # Registration
 # ------------------------------------------------------------------------------
 
 thermomaven-usage() {
+  echo "build|Fetch the latest ThermoMaven app into .apks/, the only source for its protocol"
   echo "lint|Lint the integration and its tests (ruff)"
 }
 
 thermomaven-flow() {
   case "$1" in
+    build) thermomaven-build; return $? ;;
     lint) thermomaven-lint; return $? ;;
     *) return 127 ;;
   esac

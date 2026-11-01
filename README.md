@@ -4,6 +4,8 @@ A fork of [djiesr/ThermoMaven-ha](https://github.com/djiesr/ThermoMaven-ha) (MIT
 
 **What's different:** commands go to the topic the device list named for each device. Upstream looks that up in the latest MQTT message, so after any status report it publishes to a guessed topic, the broker drops the connection, and the command is sent again on every reconnect, so the client never recovers and no command gets through.
 
+**Reading the app:** `flow build` fetches the ThermoMaven app into `.apks/`, the only source for its protocol, checked against its signing certificate and never installed. It needs `apkeep`, `jadx` and the Android SDK build-tools (`brew install apkeep jadx`; Android Studio installs the SDK).
+
 ---
 
 # ThermoMaven Home Assistant Integration
