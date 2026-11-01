@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [1.6.0] - 2026-11-01 (fork)
+
+### Added
+- Each probe has Meat and Doneness selects, which set its target. Doneness offers only what the meat allows, and a doneness the new meat doesn't have becomes its most done.
+
 ## [1.5.0] - 2026-11-01 (fork)
 
 ### Changed

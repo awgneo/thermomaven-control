@@ -16,7 +16,7 @@ from .thermomaven_api import ThermoMavenAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.CLIMATE]
+PLATFORMS = [Platform.SENSOR, Platform.CLIMATE, Platform.SELECT]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up ThermoMaven from a config entry."""
@@ -85,7 +85,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "sync_devices", handle_sync_devices)
 
     # Forward entry setup to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # One at a time: platforms set up together race, and a probe's selects need its climate entity
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR, Platform.CLIMATE])
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SELECT])
 
     # NOUVEAU: Forcer une mise à jour après setup des platforms pour réveiller les entités
     await asyncio.sleep(2)

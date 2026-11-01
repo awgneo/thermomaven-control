@@ -72,6 +72,11 @@ async def async_setup_entry(
                 )
             )
     
+    # The select platform reaches each probe's climate entity through these
+    hass.data[DOMAIN][entry.entry_id]["climates"] = {
+        (entity._device_id, entity._probe_num): entity for entity in entities_to_add
+    }
+
     if entities_to_add:
         _LOGGER.debug("🌡️ Adding %d climate entities", len(entities_to_add))
         async_add_entities(entities_to_add, update_before_add=False)

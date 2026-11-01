@@ -6,6 +6,7 @@ A fork of [djiesr/ThermoMaven-ha](https://github.com/djiesr/ThermoMaven-ha) (MIT
 
 - **Turning a probe's climate on** starts a cook at its target, **changing the target** changes a running cook, and **turning it off** ends the cook. With no cook running, a target is only remembered, so choosing one never starts anything.
 - The climate entity has only on and off: its presets, which reported the cook's state, are gone. The Cooking State sensor still does.
+- Each probe has a **Meat** and a **Doneness** select. Doneness offers only what that meat allows, and choosing either sets the target. The temperatures are in `select.py`.
 - A second probe gets its own area and ambient sensors.
 
 **Reading the app:** `flow build` fetches the ThermoMaven app into `.apks/`, the only source for its protocol, checked against its signing certificate and never installed. It needs `apkeep`, `jadx` and the Android SDK build-tools (`brew install apkeep jadx`; Android Studio installs the SDK).

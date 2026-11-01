@@ -56,3 +56,7 @@ These are for listening. Publishing to them gets the client disconnected by the 
 ## States
 
 A probe's `cookingState` is one of `disconnected`, `standby`, `cooking`, `ready`, `remove`, `resting`, `searching`, `charged`, `charging`, `error`, `lost` and `overheat`. Probes are named `probe1` and `probe2` (the enum calls them Dark and Bright). A device's `globalStatus` is `offline`, `online`, `error` or `upgrading`.
+
+## Doneness
+
+The app's meat and doneness temperatures aren't in the APK: its screens load them after sign-in (`dict/list`, `preset/get`). This integration's table in `select.py` is its own, not the app's.
