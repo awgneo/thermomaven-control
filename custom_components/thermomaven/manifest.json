@@ -1,6 +1,6 @@
 {
   "domain": "thermomaven",
-  "name": "ThermoMaven",
+  "name": "ThermoMaven Control",
   "codeowners": ["@djiesr"],
   "config_flow": true,
   "dependencies": [],
