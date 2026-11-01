@@ -3,10 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 
-## [1.4.10] - 2026-11-01 (fork)
+## [1.5.0] - 2026-11-01 (fork)
+
+### Changed
+- Cooks are started, changed and ended over HTTP (`/app/command/send`) in the app's own format, and nothing is published over MQTT any more, which is what kept the client disconnected.
+- A probe's climate entity starts a cook when turned on and ends it when turned off. A target set with no cook running is remembered, across restarts too.
+- Its status presets and Auto mode are gone, and it shows the device's target during a cook.
 
 ### Fixed
-- Commands keep the publish topic from the device list, instead of reading the latest message and guessing a topic that makes the broker drop the connection in a loop.
+- Each probe's area and ambient temperatures read that probe. The first probe's sensors keep their IDs.
 
 ## [1.4.9] - 2026-03-14 🌍
 

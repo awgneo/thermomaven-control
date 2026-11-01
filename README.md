@@ -2,7 +2,11 @@
 
 A fork of [djiesr/ThermoMaven-ha](https://github.com/djiesr/ThermoMaven-ha) (MIT), with thanks to its authors. It keeps the `thermomaven` domain, and everything below still applies.
 
-**What's different:** commands go to the topic the device list named for each device. Upstream looks that up in the latest MQTT message, so after any status report it publishes to a guessed topic, the broker drops the connection, and the command is sent again on every reconnect, so the client never recovers and no command gets through.
+**What's different:** cooks are controlled the way the ThermoMaven app does it, read from the app itself (see [PROTOCOL.md](PROTOCOL.md)). Commands go over HTTP, and MQTT only listens. Upstream publishes commands over MQTT, which the broker answers by disconnecting the client, again on every reconnect, so no command gets through.
+
+- **Turning a probe's climate on** starts a cook at its target, **changing the target** changes a running cook, and **turning it off** ends the cook. With no cook running, a target is only remembered, so choosing one never starts anything.
+- The climate entity has only on and off: its presets, which reported the cook's state, are gone. The Cooking State sensor still does.
+- A second probe gets its own area and ambient sensors.
 
 **Reading the app:** `flow build` fetches the ThermoMaven app into `.apks/`, the only source for its protocol, checked against its signing certificate and never installed. It needs `apkeep`, `jadx` and the Android SDK build-tools (`brew install apkeep jadx`; Android Studio installs the SDK).
 

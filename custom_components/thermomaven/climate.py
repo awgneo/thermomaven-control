@@ -9,31 +9,23 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, DEVICE_MODELS
+from .const import DEVICE_MODELS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Cooking states to HVAC modes
-COOKING_STATE_TO_HVAC = {
-    "cooking": HVACMode.HEAT,
-    "ready": HVACMode.OFF,
-    "resting": HVACMode.AUTO,
-    "remove": HVACMode.OFF,
-}
-
-# Preset modes for cooking states
-PRESET_COOKING = "cooking"
-PRESET_READY = "ready"
-PRESET_RESTING = "resting"
-PRESET_REMOVE = "remove"
-
-PRESET_MODES = [PRESET_COOKING, PRESET_READY, PRESET_RESTING, PRESET_REMOVE]
+# A probe's cook is running in these states, until it's ended: "ready" has reached the target, and it stays
+# on to rest
+ACTIVE_STATES = {"cooking", "ready", "resting", "remove"}
+# A cook can't start from these, as far as the app's states say
+UNREACHABLE_STATES = {"disconnected", "lost", "error"}
 
 
 async def async_setup_entry(
@@ -102,21 +94,20 @@ def _get_num_probes(device_model: str) -> int:
     return probe_counts.get(device_model, 1)
 
 
-class ThermoMavenClimate(CoordinatorEntity, ClimateEntity):
-    """Representation of a ThermoMaven Climate entity."""
+class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
+    """A probe's cook: on starts one at the target, off ends it, and the target changes a running one.
+
+    With no cook running the target is only remembered, so choosing one never starts anything.
+    """
 
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.AUTO]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE |
-        ClimateEntityFeature.PRESET_MODE |
-        ClimateEntityFeature.TURN_ON |
-        ClimateEntityFeature.TURN_OFF
+        ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
     )
-    _attr_preset_modes = PRESET_MODES
-    _attr_min_temp = 32  # 0°C
-    _attr_max_temp = 572  # 300°C
+    _attr_min_temp = 32
+    _attr_max_temp = 572
     _attr_target_temperature_step = 1
 
     def __init__(self, coordinator, api, device, probe_num, entry_id):
@@ -124,237 +115,112 @@ class ThermoMavenClimate(CoordinatorEntity, ClimateEntity):
         super().__init__(coordinator)
         self._api = api
         self._device = device
+        self._device_id = str(device.get("deviceId"))
+        self._device_model = device.get("deviceModel", "Unknown")
         self._probe_num = probe_num
         self._entry_id = entry_id
-        self._target_temperature_override = None  # Cache local pour la température cible
-        
-        device_id = str(device.get("deviceId"))
-        device_name = device.get("deviceName", "ThermoMaven")
-        device_model = device.get("deviceModel", "Unknown")
-        
-        # Unique ID
-        self._attr_unique_id = f"{device_id}_probe_{probe_num}_climate"
-        
-        # Entity name and translation
+        self._next_target: float | None = None
+
+        self._attr_unique_id = f"{self._device_id}_probe_{probe_num}_climate"
         self._attr_name = f"Probe {probe_num} Control"
         self._attr_translation_key = f"probe_{probe_num}_control"
-        
-        # Device info
-        model_name = DEVICE_MODELS.get(device_model, device_model)
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-            name=device_name,
+            identifiers={(DOMAIN, self._device_id)},
+            name=device.get("deviceName", "ThermoMaven"),
             manufacturer="ThermoMaven",
-            model=model_name,
+            model=DEVICE_MODELS.get(self._device_model, self._device_model),
         )
-        
-        _LOGGER.debug("Created climate entity: %s (probe %d)", device_name, probe_num)
+
+    async def async_added_to_hass(self) -> None:
+        """Remember the target across restarts."""
+        await super().async_added_to_hass()
+        if (last_state := await self.async_get_last_state()) is not None:
+            self._next_target = last_state.attributes.get(ATTR_TEMPERATURE)
+
+    def _status(self) -> dict:
+        """Return the device's last status report."""
+        for device in (self.coordinator.data or {}).get("devices", []):
+            if str(device.get("deviceId")) == self._device_id:
+                return (device.get("lastStatusCmd") or {}).get("cmdData", {})
+        return {}
+
+    def _probe(self) -> dict:
+        """Return this probe's part of the status, which names it probe1, probe2 and so on."""
+        for probe in self._status().get("probes", []):
+            if probe.get("probeColor") == f"probe{self._probe_num}":
+                return probe
+        return {}
+
+    def _cook_is_running(self) -> bool:
+        return self._probe().get("cookingState") in ACTIVE_STATES
 
     @property
     def current_temperature(self) -> float | None:
-        """Return the current temperature."""
-        if not self.coordinator.data:
-            return None
-        
-        devices = self.coordinator.data.get("devices", [])
-        device_id = str(self._device.get("deviceId"))
-        
-        for device in devices:
-            if str(device.get("deviceId")) == device_id:
-                last_status = device.get("lastStatusCmd")
-                if not last_status:
-                    return None
-                
-                cmd_data = last_status.get("cmdData", {})
-                probes = cmd_data.get("probes", [])
-                
-                if self._probe_num <= len(probes):
-                    probe_data = probes[self._probe_num - 1]
-                    cur_temp = probe_data.get("curTemperature")
-                    if cur_temp is not None:
-                        # Temperature is in tenths of degrees F
-                        return cur_temp / 10.0
-        
-        return None
+        """Return the probe's temperature (reported in tenths of a degree F)."""
+        temperature = self._probe().get("curTemperature")
+        return None if temperature is None else temperature / 10
 
     @property
     def target_temperature(self) -> float | None:
-        """Return the target temperature."""
-        # Si on a une température override locale (récemment définie), l'utiliser
-        if self._target_temperature_override is not None:
-            return self._target_temperature_override
-        
-        # Sinon, lire depuis les données du coordinator
-        if not self.coordinator.data:
-            return None
-        
-        devices = self.coordinator.data.get("devices", [])
-        device_id = str(self._device.get("deviceId"))
-        
-        for device in devices:
-            if str(device.get("deviceId")) == device_id:
-                last_status = device.get("lastStatusCmd")
-                if not last_status:
-                    return None
-                
-                cmd_data = last_status.get("cmdData", {})
-                probes = cmd_data.get("probes", [])
-                
-                if self._probe_num <= len(probes):
-                    probe_data = probes[self._probe_num - 1]
-                    set_params = probe_data.get("setParams", [])
-                    
-                    if set_params and len(set_params) > 0:
-                        set_temp = set_params[0].get("setTemperature")
-                        if set_temp is not None:
-                            # Temperature is in tenths of degrees F
-                            temp_from_device = set_temp / 10.0
-                            # Si la température de l'appareil correspond à notre override, effacer l'override
-                            if self._target_temperature_override is not None and abs(temp_from_device - self._target_temperature_override) < 0.5:
-                                _LOGGER.debug("Temperature confirmed by device, clearing override")
-                                self._target_temperature_override = None
-                            return temp_from_device
-        
-        return None
+        """Return the running cook's target, or the one the next cook will start at."""
+        if self._cook_is_running():
+            for params in self._probe().get("setParams", []):
+                if (temperature := params.get("setTemperature")) is not None:
+                    return temperature / 10
+        return self._next_target
 
     @property
     def hvac_mode(self) -> HVACMode:
-        """Return current HVAC mode."""
-        cooking_state = self._get_cooking_state()
-        
-        if cooking_state:
-            return COOKING_STATE_TO_HVAC.get(cooking_state, HVACMode.OFF)
-        
-        return HVACMode.OFF
+        """On while a cook runs."""
+        return HVACMode.HEAT if self._cook_is_running() else HVACMode.OFF
 
-    @property
-    def preset_mode(self) -> str | None:
-        """Return current preset mode."""
-        cooking_state = self._get_cooking_state()
-        
-        if cooking_state == "cooking":
-            return PRESET_COOKING
-        elif cooking_state == "ready":
-            return PRESET_READY
-        elif cooking_state == "resting":
-            return PRESET_RESTING
-        elif cooking_state == "remove":
-            return PRESET_REMOVE
-        
-        return None
-
-    def _get_cooking_state(self) -> str | None:
-        """Get the cooking state for this probe."""
-        if not self.coordinator.data:
-            return None
-        
-        devices = self.coordinator.data.get("devices", [])
-        device_id = str(self._device.get("deviceId"))
-        
-        for device in devices:
-            if str(device.get("deviceId")) == device_id:
-                last_status = device.get("lastStatusCmd")
-                if not last_status:
-                    return None
-                
-                cmd_data = last_status.get("cmdData", {})
-                probes = cmd_data.get("probes", [])
-                
-                if self._probe_num <= len(probes):
-                    probe_data = probes[self._probe_num - 1]
-                    return probe_data.get("cookingState")
-        
-        return None
-
-    async def async_set_temperature(self, **kwargs) -> None:
-        """Set new target temperature."""
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Change the running cook's target, or remember the next one."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        
-        _LOGGER.debug("Setting target temperature to %.1f°F for probe %d", temperature, self._probe_num)
-        
-        # Stocker la température localement immédiatement
-        self._target_temperature_override = temperature
-        # Forcer la mise à jour de l'interface
+        self._next_target = temperature
+        if self._cook_is_running():
+            self._require_online()
+            if not await self._api.async_change_cook(
+                self._device_id, self._device_model, self._probe(), int(temperature * 10)
+            ):
+                raise HomeAssistantError(f"ThermoMaven refused the new target of {temperature}°F")
         self.async_write_ha_state()
-        
-        # Get probe color (bright/dark)
-        probe_color = self._get_probe_color()
-        
-        # Convert temperature to tenths
-        temp_tenths = int(temperature * 10)
-        
-        # Send command via MQTT
-        success = await self._api.async_set_probe_temperature(
-            device_id=str(self._device.get("deviceId")),
-            device_type=self._device.get("deviceModel", "WT02"),
-            probe_color=probe_color,
-            target_temperature=temp_tenths
-        )
-        
-        if success:
-            _LOGGER.debug("✅ Temperature command sent successfully - waiting for MQTT confirmation")
-            # Pas besoin de forcer un refresh, l'appareil va répondre via MQTT automatiquement
-            # Le _on_mqtt_message va déclencher le refresh quand le status:report arrive
-        else:
-            _LOGGER.error("❌ Failed to send temperature command")
-            # Annuler l'override si la commande a échoué
-            self._target_temperature_override = None
-            self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set new HVAC mode."""
-        _LOGGER.debug("Setting HVAC mode to %s for probe %d", hvac_mode, self._probe_num)
-        
-        probe_color = self._get_probe_color()
-        
-        # Map HVAC mode to cooking action
+        """Start or end the cook."""
         if hvac_mode == HVACMode.HEAT:
-            # Start cooking avec la température cible actuelle
-            target_temp = self.target_temperature or 165
-            self._target_temperature_override = target_temp  # Sauvegarder l'override
-            self.async_write_ha_state()
-            
-            await self._api.async_start_cooking(
-                device_id=str(self._device.get("deviceId")),
-                device_type=self._device.get("deviceModel", "WT02"),
-                probe_color=probe_color,
-                target_temperature=int(target_temp * 10)
-            )
+            await self.async_turn_on()
         elif hvac_mode == HVACMode.OFF:
-            # Stop cooking
-            await self._api.async_stop_cooking(
-                device_id=str(self._device.get("deviceId")),
-                device_type=self._device.get("deviceModel", "WT02"),
-                probe_color=probe_color
-            )
-        
-        # Pas besoin de forcer un refresh, MQTT va mettre à jour automatiquement
-        _LOGGER.debug("HVAC mode command sent - waiting for MQTT confirmation")
-
-    async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set new preset mode."""
-        _LOGGER.debug("Setting preset mode to %s for probe %d", preset_mode, self._probe_num)
-        
-        # Map preset to HVAC mode
-        if preset_mode == PRESET_COOKING:
-            await self.async_set_hvac_mode(HVACMode.HEAT)
-        elif preset_mode in [PRESET_READY, PRESET_REMOVE]:
-            await self.async_set_hvac_mode(HVACMode.OFF)
-        elif preset_mode == PRESET_RESTING:
-            await self.async_set_hvac_mode(HVACMode.AUTO)
+            await self.async_turn_off()
 
     async def async_turn_on(self) -> None:
-        """Turn the entity on."""
-        await self.async_set_hvac_mode(HVACMode.HEAT)
+        """Start a cook at the target, unless one is running."""
+        if self._cook_is_running():
+            return
+        target = self._next_target
+        if target is None:
+            raise HomeAssistantError("Set a target before starting a cook")
+        state = self._probe().get("cookingState")
+        if state in UNREACHABLE_STATES:
+            raise HomeAssistantError(f"The probe can't start a cook while it's {state}")
+        self._require_online()
+        if not await self._api.async_start_cook(
+            self._device_id, self._device_model, f"probe{self._probe_num}", int(target * 10)
+        ):
+            raise HomeAssistantError("ThermoMaven refused to start the cook")
 
     async def async_turn_off(self) -> None:
-        """Turn the entity off."""
-        await self.async_set_hvac_mode(HVACMode.OFF)
+        """End the running cook."""
+        if not self._cook_is_running():
+            return
+        self._require_online()
+        if not await self._api.async_finish_cook(self._device_id, self._device_model, self._probe()):
+            raise HomeAssistantError("ThermoMaven refused to end the cook")
 
-    def _get_probe_color(self) -> str:
-        """Get probe color (bright/dark) based on probe number."""
-        # Odd numbered probes are "bright", even are "dark"
-        return "bright" if self._probe_num % 2 == 1 else "dark"
-
+    def _require_online(self) -> None:
+        """A device that's offline can't take a command, which the app refuses too."""
+        status = self._status().get("globalStatus")
+        if status == "offline":
+            raise HomeAssistantError("The thermometer is offline")

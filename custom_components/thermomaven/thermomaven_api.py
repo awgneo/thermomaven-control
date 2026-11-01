@@ -21,6 +21,11 @@ from .const import API_BASE_URL_COM, API_BASE_URL_DE, EUROPEAN_COUNTRIES, MQTT_B
 
 _LOGGER = logging.getLogger(__name__)
 
+# The app's cook actions (its web app's enum). Changing a running cook's target is START again
+COOK_ACTION_START = 1
+COOK_ACTION_FINISH = 5
+MANUAL_COOK = {"dataType": "manual", "dataId": "", "dataName": "Manual cook", "dataImgUrl": ""}
+
 
 class ThermoMavenAPI:
     """ThermoMaven API client."""
@@ -58,8 +63,6 @@ class ThermoMavenAPI:
         self.mqtt_config = None
         self.coordinator = None
         self._latest_mqtt_data = None
-        # Where each device takes commands, from its last device list: every later message replaces the latest data
-        self._device_pub_topics: dict[str, str] = {}
         
         # Fichiers temporaires pour les certificats
         self.cert_files = []
@@ -373,11 +376,6 @@ class ThermoMavenAPI:
                 devices = cmd_data.get("devices", [])
                 _LOGGER.debug("Device list updated via MQTT: %d devices found", len(devices))
                 
-                for device in devices:
-                    pub_topic = self._pub_topic_of(device)
-                    if pub_topic:
-                        self._device_pub_topics[str(device.get("deviceId"))] = pub_topic
-
                 # Marquer que la liste MQTT a été reçue
                 self._mqtt_device_list_received = True
                 _LOGGER.debug("✅ MQTT device list received and processed")
@@ -453,218 +451,72 @@ class ThermoMavenAPI:
         except Exception as err:
             _LOGGER.error("Failed to trigger device sync: %s", err)
 
-    async def async_set_probe_temperature(
-        self, device_id: str, device_type: str, probe_color: str, target_temperature: int
-    ) -> bool:
-        """Set target temperature for a probe via MQTT.
-        
-        Args:
-            device_id: Device ID
-            device_type: Device model (e.g., "WT02")
-            probe_color: Probe color ("bright" or "dark")
-            target_temperature: Target temperature in tenths of degrees F (e.g., 650 = 65.0°F)
-        
-        Returns:
-            True if command was published successfully
+    async def async_send_cook_action(self, device_id: str, device_type: str, cmd_data: dict) -> bool:
+        """Send a cook action as the app does, over HTTP: MQTT only ever carries the device's reports.
+
+        Publishing commands gets the client disconnected by the broker, again on every reconnect.
         """
-        if not self.mqtt_client:
-            _LOGGER.error("MQTT client not initialized")
-            return False
-        
-        # Get device topics from latest MQTT data
-        pub_topic = self._get_device_pub_topic(device_id)
-        if not pub_topic:
-            _LOGGER.error("No publish topic found for device %s", device_id)
-            return False
-        
-        # Build command
-        cmd_data = {
-            "probeColor": probe_color,
-            "cookingAction": 3,  # 3 = modify settings
-            "setParams": [
-                {
-                    "setTemperature": target_temperature
-                }
-            ]
-        }
-        
-        message = {
-            "cmdType": "WT:probe:control",
-            "cmdData": cmd_data,
-            "cmdId": str(uuid.uuid4()).replace("-", ""),
-            "deviceId": device_id,
-            "deviceType": device_type,
-            "userId": str(self.user_id),
-            "appVersion": "1804"
-        }
-        
-        # Publish to MQTT
-        try:
-            payload = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
-            _LOGGER.debug("Publishing temperature command to %s: %s", pub_topic, payload)
-            
-            result = await self.hass.async_add_executor_job(
-                self.mqtt_client.publish, pub_topic, payload, 1
-            )
-            
-            if result.rc == 0:
-                _LOGGER.debug("✅ Temperature command published successfully")
-                return True
-            else:
-                _LOGGER.error("❌ Failed to publish temperature command: %s", result.rc)
-                return False
-        except Exception as err:
-            _LOGGER.error("Error publishing temperature command: %s", err)
-            return False
+        result = await self._async_request(
+            "POST",
+            "/app/command/send",
+            {
+                "cmdId": uuid.uuid4().hex,
+                "cmdType": f"{device_type}:cooking:action",
+                "cmdData": cmd_data,
+                "deviceId": device_id,
+                "deviceType": device_type,
+            },
+        )
+        if result.get("code") == "0":
+            return True
+        _LOGGER.error("ThermoMaven refused %s for %s: %s", cmd_data.get("cookingAction"), device_id, result)
+        return False
 
-    async def async_start_cooking(
-        self, device_id: str, device_type: str, probe_color: str, target_temperature: int
-    ) -> bool:
-        """Start cooking with target temperature.
-        
-        Args:
-            device_id: Device ID
-            device_type: Device model (e.g., "WT02")
-            probe_color: Probe color ("bright" or "dark")
-            target_temperature: Target temperature in tenths of degrees F
-        
-        Returns:
-            True if command was published successfully
-        """
-        if not self.mqtt_client:
-            _LOGGER.error("MQTT client not initialized")
-            return False
-        
-        pub_topic = self._get_device_pub_topic(device_id)
-        if not pub_topic:
-            _LOGGER.error("No publish topic found for device %s", device_id)
-            return False
-        
-        # Generate cook UUID
-        cook_uuid = str(uuid.uuid4())
-        
-        cmd_data = {
-            "probeColor": probe_color,
-            "cookingAction": 1,  # 1 = start
-            "cookUuid": cook_uuid,
-            "startClient": "android",
-            "cookingState": "cooking",
-            "setParams": [
-                {
-                    "setTemperature": target_temperature
-                }
-            ]
-        }
-        
-        message = {
-            "cmdType": "WT:probe:control",
-            "cmdData": cmd_data,
-            "cmdId": str(uuid.uuid4()).replace("-", ""),
-            "deviceId": device_id,
-            "deviceType": device_type,
-            "userId": str(self.user_id),
-            "appVersion": "1804"
-        }
-        
-        try:
-            payload = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
-            _LOGGER.debug("Publishing start cooking command to %s", pub_topic)
-            
-            result = await self.hass.async_add_executor_job(
-                self.mqtt_client.publish, pub_topic, payload, 1
-            )
-            
-            if result.rc == 0:
-                _LOGGER.debug("✅ Start cooking command published successfully")
-                return True
-            else:
-                _LOGGER.error("❌ Failed to publish start cooking command: %s", result.rc)
-                return False
-        except Exception as err:
-            _LOGGER.error("Error publishing start cooking command: %s", err)
-            return False
+    async def async_start_cook(self, device_id: str, device_type: str, probe_color: str, target_temperature: int) -> bool:
+        """Start a manual cook. The target is in tenths of a degree F."""
+        return await self.async_send_cook_action(
+            device_id,
+            device_type,
+            {
+                "probeColor": probe_color,
+                "cookingAction": COOK_ACTION_START,
+                "cookingMode": "manual",
+                "cookUuid": str(uuid.uuid4()),
+                "startClient": "android",
+                "setParams": [{"setTemperature": target_temperature}],
+                "cookingData": MANUAL_COOK,
+            },
+        )
 
-    async def async_stop_cooking(
-        self, device_id: str, device_type: str, probe_color: str
-    ) -> bool:
-        """Stop cooking.
-        
-        Args:
-            device_id: Device ID
-            device_type: Device model (e.g., "WT02")
-            probe_color: Probe color ("bright" or "dark")
-        
-        Returns:
-            True if command was published successfully
-        """
-        if not self.mqtt_client:
-            _LOGGER.error("MQTT client not initialized")
-            return False
-        
-        pub_topic = self._get_device_pub_topic(device_id)
-        if not pub_topic:
-            _LOGGER.error("No publish topic found for device %s", device_id)
-            return False
-        
-        cmd_data = {
-            "probeColor": probe_color,
-            "cookingAction": 2,  # 2 = stop/pause
-            "cookingState": "ready"
-        }
-        
-        message = {
-            "cmdType": "WT:probe:control",
-            "cmdData": cmd_data,
-            "cmdId": str(uuid.uuid4()).replace("-", ""),
-            "deviceId": device_id,
-            "deviceType": device_type,
-            "userId": str(self.user_id),
-            "appVersion": "1804"
-        }
-        
-        try:
-            payload = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
-            _LOGGER.debug("Publishing stop cooking command to %s", pub_topic)
-            
-            result = await self.hass.async_add_executor_job(
-                self.mqtt_client.publish, pub_topic, payload, 1
-            )
-            
-            if result.rc == 0:
-                _LOGGER.debug("✅ Stop cooking command published successfully")
-                return True
-            else:
-                _LOGGER.error("❌ Failed to publish stop cooking command: %s", result.rc)
-                return False
-        except Exception as err:
-            _LOGGER.error("Error publishing stop cooking command: %s", err)
-            return False
+    async def async_change_cook(self, device_id: str, device_type: str, probe: dict, target_temperature: int) -> bool:
+        """Change a running cook's target: the same action as starting one, naming the cook as reported."""
+        start_client = probe.get("startClient")
+        return await self.async_send_cook_action(
+            device_id,
+            device_type,
+            {
+                "probeColor": probe.get("probeColor"),
+                "cookingAction": COOK_ACTION_START,
+                "cookingMode": probe.get("cookingMode"),
+                "cookUuid": probe.get("cookUuid"),
+                "startClient": start_client,
+                "setParams": [{"setTemperature": target_temperature}],
+                # A cook started on the device itself has no cooking data
+                "cookingData": None if start_client == "device" else MANUAL_COOK,
+            },
+        )
 
-    @staticmethod
-    def _pub_topic_of(device: dict) -> str | None:
-        """Return the topic a device takes commands on, from its entry in a device list."""
-        pub_topics = device.get("pubTopics", [])
-        if pub_topics:
-            return pub_topics[0]
-        # Format: app/WT10/216510650012434433/sub → app/WT10/216510650012434433/pub
-        sub_topics = device.get("subTopics", [])
-        if sub_topics:
-            return sub_topics[0].replace("/sub", "/pub")
-        device_model = device.get("deviceModel")
-        if device_model:
-            return f"app/{device_model}/{device.get('deviceId')}/pub"
-        return None
-
-    def _get_device_pub_topic(self, device_id: str) -> str | None:
-        """Return the publish topic of a device, or None until a device list has named it.
-
-        Never guessed: the broker drops a client that publishes outside its topics, and a QoS 1 command
-        is sent again on every reconnect, so one wrong topic disconnects the client for good.
-        """
-        pub_topic = self._device_pub_topics.get(str(device_id))
-        if not pub_topic:
-            _LOGGER.error("No publish topic known yet for device %s", device_id)
-        return pub_topic
+    async def async_finish_cook(self, device_id: str, device_type: str, probe: dict) -> bool:
+        """End a cook."""
+        return await self.async_send_cook_action(
+            device_id,
+            device_type,
+            {
+                "probeColor": probe.get("probeColor"),
+                "cookingAction": COOK_ACTION_FINISH,
+                "cookUuid": probe.get("cookUuid"),
+            },
+        )
 
     async def async_disconnect_mqtt(self):
         """Disconnect MQTT client."""
