@@ -1,6 +1,7 @@
 """Climate platform for ThermoMaven."""
 import asyncio
 import logging
+import time
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -24,6 +25,8 @@ _LOGGER = logging.getLogger(__name__)
 # A probe's cook is running in these states, until it's ended: "ready" has reached the target, and it stays
 # on to rest
 ACTIVE_STATES = {"cooking", "ready", "resting", "remove"}
+# How long a target ThermoMaven accepted shows before the device must have reported it (seconds)
+PENDING_TARGET_SECONDS = 30
 # A cook can't start from these, as far as the app's states say
 UNREACHABLE_STATES = {"disconnected", "lost", "error"}
 
@@ -127,6 +130,9 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         self._next_target: float | None = None
         # What the next cook starts at when no target's been set: the probe's chosen meat and doneness
         self.default_target = None
+        # A target ThermoMaven accepted, and when to stop waiting for the device to report it
+        self._pending_target: float | None = None
+        self._pending_until = 0.0
 
         self._attr_unique_id = f"{self._device_id}_probe_{probe_num}_climate"
         self._attr_name = f"Probe {probe_num} Control"
@@ -173,8 +179,17 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         if self._cook_is_running():
             for params in self._probe().get("setParams", []):
                 if (temperature := params.get("setTemperature")) is not None:
-                    return temperature / 10
+                    return self._shown_target(temperature / 10)
         return self._idle_target()
+
+    def _shown_target(self, reported: float) -> float:
+        """Return a just-accepted target until the device reports it, or until it's taken too long."""
+        if self._pending_target is None:
+            return reported
+        if reported == self._pending_target or time.monotonic() >= self._pending_until:
+            self._pending_target = None
+            return reported
+        return self._pending_target
 
     def _idle_target(self) -> float | None:
         """Return the target the next cook starts at."""
@@ -199,6 +214,8 @@ class ThermoMavenClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
                 self._device_id, self._device_model, self._probe(), int(temperature * 10)
             ):
                 raise HomeAssistantError(f"ThermoMaven refused the new target of {temperature}°F")
+            self._pending_target = temperature
+            self._pending_until = time.monotonic() + PENDING_TARGET_SECONDS
         self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:

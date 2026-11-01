@@ -1,3 +1,5 @@
 {
-  "name": "ThermoMaven Control"
+  "name": "ThermoMaven Control",
+  "render_readme": true,
+  "homeassistant": "2026.10.4"
 }

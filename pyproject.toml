@@ -1,6 +1,6 @@
 [project]
 name = "thermomaven-control"
-version = "1.6.1"
+version = "1.7.0"
 description = "Home Assistant custom component for ThermoMaven wireless thermometers"
 readme = "README.md"
 requires-python = ">=3.14.3"

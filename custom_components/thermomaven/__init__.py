@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, CONF_REGION
@@ -130,6 +130,26 @@ class ThermoMavenDataUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=300),  # 5 minutes (MQTT is primary)
         )
+
+    @callback
+    def async_apply_status_report(self, report: dict) -> None:
+        """Show a device's status report at once.
+
+        A refresh is limited to one every 10 seconds, and reports come every couple of seconds. This leaves the
+        refresh's timer alone, so it still reads the device list. A device not known yet is left to a refresh.
+        """
+        devices = (self.data or {}).get("devices", [])
+        if not any(str(device.get("deviceId")) == str(report.get("deviceId")) for device in devices):
+            self.hass.async_create_task(self.async_request_refresh())
+            return
+        self.data = {
+            **self.data,
+            "devices": [
+                {**device, "lastStatusCmd": report} if str(device.get("deviceId")) == str(report.get("deviceId")) else device
+                for device in devices
+            ],
+        }
+        self.async_update_listeners()
 
     async def _async_update_data(self):
         """Update data via library."""

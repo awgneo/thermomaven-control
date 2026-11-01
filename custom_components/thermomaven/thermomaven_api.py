@@ -419,10 +419,11 @@ class ThermoMavenAPI:
                 _LOGGER.debug("🌡️ Temperature update: Device %s = %s (Battery: %s%%)", 
                            device_id, temp, cmd_data.get("batteryValue", "?"))
                 
-                # Store the status report data for the coordinator to use
+                # Straight to the entities: this runs on the MQTT client's thread, and a refresh waits its turn
                 if self.coordinator:
-                    _LOGGER.debug("Triggering coordinator refresh for temperature update")
-                    self.hass.add_job(self.coordinator.async_request_refresh())
+                    self.hass.loop.call_soon_threadsafe(
+                        self.coordinator.async_apply_status_report, {**data, "deviceId": device_id}
+                    )
                 else:
                     _LOGGER.warning("No coordinator available for temperature update")
                     

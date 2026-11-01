@@ -9,7 +9,7 @@ The broker is AWS IoT, reached with the certificate from `/app/mqtt/cert/apply`.
 - `app/user/<id>/sub`: `user:device:list`, the devices.
 - `device/<model>/<deviceId>/pub`, each device's `subTopics`: `<model>:status:report`, with a device's probes.
 
-These are for listening. Publishing to them gets the client disconnected by the broker, and upstream's QoS 1 commands were sent again on every reconnect.
+These are for listening. Publishing to them gets the client disconnected by the broker, again on every reconnect when the command is QoS 1, so nothing is ever published.
 
 ## Commanding: HTTP
 

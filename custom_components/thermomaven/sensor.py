@@ -9,17 +9,16 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfTemperature,
     UnitOfTime,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers import entity_registry
 
-from .const import DOMAIN, DEVICE_MODELS
+from .const import DEVICE_MODELS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,43 +43,14 @@ async def async_setup_entry(
     _LOGGER.debug("✅ Coordinator has %d device(s), proceeding with sensor setup", 
                  len(coordinator.data.get("devices", [])))
     
-    # Get entity registry
-    entity_registry_instance = entity_registry.async_get(hass)
-    
-    # CRITIQUE: Sauvegarder les noms personnalisés avant suppression
-    custom_names = {}
-    existing_entities_to_remove = [
-        entity_id
-        for entity_id, entity in entity_registry_instance.entities.items()
-        if entity.platform == DOMAIN and entity.config_entry_id == entry.entry_id
-    ]
-    
-    if existing_entities_to_remove:
-        _LOGGER.debug("💾 Saving custom names before removing %d old entities", len(existing_entities_to_remove))
-        for entity_id in existing_entities_to_remove:
-            entity = entity_registry_instance.entities.get(entity_id)
-            if entity and entity.name:
-                custom_names[entity_id] = entity.name
-                _LOGGER.debug("Saved custom name: %s -> %s", entity_id, entity.name)
-        
-        _LOGGER.debug("🗑️ Removing %d old entities to force recreation", len(existing_entities_to_remove))
-        for entity_id in existing_entities_to_remove:
-            entity_registry_instance.async_remove(entity_id)
-        # Attendre que la suppression soit effective
-        await asyncio.sleep(0.5)
-    
-    entities_to_add = []
-    
-    async def add_devices():
-        """Add devices."""
-        nonlocal entities_to_add
-        
+    known_devices: set[str] = set()
+
+    @callback
+    def add_devices() -> None:
+        """Add the sensors of devices not added yet: this runs on every status report."""
+        entities_to_add = []
         devices = coordinator.data.get("devices", [])
-        _LOGGER.debug("🔍 Adding sensors for %d device(s)", len(devices))
-        
-        if not devices:
-            return
-        
+
         for device in devices:
             device_id = str(device.get("deviceId"))
             
@@ -88,6 +58,10 @@ async def async_setup_entry(
                 _LOGGER.warning("Skipping device with invalid deviceId: %s", device.get("deviceName"))
                 continue
             
+            if device_id in known_devices:
+                continue
+            known_devices.add(device_id)
+
             device_model = device.get("deviceModel", "Unknown")
             num_probes = _get_num_probes(device_model)
             
@@ -145,34 +119,11 @@ async def async_setup_entry(
                 ThermoMavenWiFiRSSISensor(coordinator, device, entry.entry_id)
             )
     
-    # Create entities
-    await add_devices()
-    
-    if entities_to_add:
-        _LOGGER.debug("➕ Adding %d new entities", len(entities_to_add))
-        async_add_entities(entities_to_add, update_before_add=True)
-        
-        # Restaurer les noms personnalisés si disponibles
-        if custom_names:
-            _LOGGER.debug("🔄 Restoring %d custom names", len(custom_names))
-            await asyncio.sleep(1)  # Attendre que les entités soient créées
-            
-            for entity in entities_to_add:
-                entity_id = f"sensor.{entity.entity_id}"
-                if entity_id in custom_names:
-                    try:
-                        entity_registry_instance.async_update_entity(
-                            entity_id, 
-                            name=custom_names[entity_id]
-                        )
-                        _LOGGER.debug("Restored custom name: %s -> %s", entity_id, custom_names[entity_id])
-                    except Exception as e:
-                        _LOGGER.warning("Failed to restore custom name for %s: %s", entity_id, e)
-    
-    # Register callback for future device additions
-    coordinator.async_add_listener(lambda: hass.async_create_task(add_devices()))
-    
-    _LOGGER.debug("✅ Sensor setup complete")
+        if entities_to_add:
+            async_add_entities(entities_to_add, update_before_add=True)
+
+    add_devices()
+    entry.async_on_unload(coordinator.async_add_listener(add_devices))
 
 
 def _get_num_probes(model: str) -> int:

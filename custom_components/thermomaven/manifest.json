@@ -1,17 +1,18 @@
 {
   "domain": "thermomaven",
   "name": "ThermoMaven Control",
-  "codeowners": ["@djiesr"],
+  "codeowners": [
+    "@awgneo"
+  ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/djiesr/thermomaven-ha",
+  "documentation": "https://github.com/awgneo/thermomaven-control",
   "integration_type": "hub",
   "iot_class": "cloud_push",
   "requirements": [
     "paho-mqtt>=1.6.1",
     "cryptography>=41.0.0"
   ],
-  "version": "1.6.1",
-  "issue_tracker": "https://github.com/djiesr/thermomaven-ha/issues"
+  "version": "1.7.0",
+  "issue_tracker": "https://github.com/awgneo/thermomaven-control/issues"
 }
-

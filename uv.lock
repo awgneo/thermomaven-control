@@ -2929,7 +2929,7 @@ wheels = [
 
 [[package]]
 name = "thermomaven-control"
-version = "1.6.1"
+version = "1.7.0"
 source = { virtual = "." }
 dependencies = [
     { name = "cryptography" },

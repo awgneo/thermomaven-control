@@ -1,7 +1,7 @@
 """A probe's climate entity runs its cook, over HTTP, in the app's format (see PROTOCOL.md)."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.climate import ClimateEntityFeature, HVACMode
@@ -153,10 +153,42 @@ async def test_a_cook_started_on_the_device_has_no_cooking_data(api):
     assert sent(api)["cookingData"] is None
 
 
-async def test_the_display_follows_the_device_not_the_request(api):
-    """During a cook the target shown is the device's, until it reports the new one."""
+async def test_an_accepted_target_shows_at_once(api):
     climate = probe_climate(api, RUNNING)
     await climate.async_set_temperature(temperature=150)
+    assert climate.target_temperature == 150
+
+
+async def test_a_refused_target_never_shows(api):
+    api._async_request.return_value = {"code": "500"}
+    climate = probe_climate(api, RUNNING)
+    with pytest.raises(HomeAssistantError):
+        await climate.async_set_temperature(temperature=150)
+    assert climate.target_temperature == 190
+
+
+def reports(climate, tenths: int) -> None:
+    """The device reports a target."""
+    climate._probe()["setParams"] = [{"setTemperature": tenths}]
+
+
+async def test_the_device_takes_over_once_it_reports_the_target(api):
+    climate = probe_climate(api, {**RUNNING})
+    await climate.async_set_temperature(temperature=150)
+    reports(climate, 1500)
+    assert climate.target_temperature == 150
+    reports(climate, 1600)
+    assert climate.target_temperature == 160
+
+
+async def test_a_target_the_device_never_reports_goes_back(api):
+    climate = probe_climate(api, {**RUNNING})
+    with patch("custom_components.thermomaven.climate.time.monotonic", return_value=1000.0):
+        await climate.async_set_temperature(temperature=150)
+    with patch("custom_components.thermomaven.climate.time.monotonic", return_value=1029.0):
+        assert climate.target_temperature == 150
+    with patch("custom_components.thermomaven.climate.time.monotonic", return_value=1030.0):
+        assert climate.target_temperature == 190
     assert climate.target_temperature == 190
 
 
