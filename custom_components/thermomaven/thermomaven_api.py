@@ -58,6 +58,8 @@ class ThermoMavenAPI:
         self.mqtt_config = None
         self.coordinator = None
         self._latest_mqtt_data = None
+        # Where each device takes commands, from its last device list: every later message replaces the latest data
+        self._device_pub_topics: dict[str, str] = {}
         
         # Fichiers temporaires pour les certificats
         self.cert_files = []
@@ -371,6 +373,11 @@ class ThermoMavenAPI:
                 devices = cmd_data.get("devices", [])
                 _LOGGER.debug("Device list updated via MQTT: %d devices found", len(devices))
                 
+                for device in devices:
+                    pub_topic = self._pub_topic_of(device)
+                    if pub_topic:
+                        self._device_pub_topics[str(device.get("deviceId"))] = pub_topic
+
                 # Marquer que la liste MQTT a été reçue
                 self._mqtt_device_list_received = True
                 _LOGGER.debug("✅ MQTT device list received and processed")
@@ -633,52 +640,31 @@ class ThermoMavenAPI:
             _LOGGER.error("Error publishing stop cooking command: %s", err)
             return False
 
+    @staticmethod
+    def _pub_topic_of(device: dict) -> str | None:
+        """Return the topic a device takes commands on, from its entry in a device list."""
+        pub_topics = device.get("pubTopics", [])
+        if pub_topics:
+            return pub_topics[0]
+        # Format: app/WT10/216510650012434433/sub → app/WT10/216510650012434433/pub
+        sub_topics = device.get("subTopics", [])
+        if sub_topics:
+            return sub_topics[0].replace("/sub", "/pub")
+        device_model = device.get("deviceModel")
+        if device_model:
+            return f"app/{device_model}/{device.get('deviceId')}/pub"
+        return None
+
     def _get_device_pub_topic(self, device_id: str) -> str | None:
-        """Get the publish topic for a device from MQTT device list.
-        
-        Args:
-            device_id: Device ID
-        
-        Returns:
-            Publish topic string or None if not found
+        """Return the publish topic of a device, or None until a device list has named it.
+
+        Never guessed: the broker drops a client that publishes outside its topics, and a QoS 1 command
+        is sent again on every reconnect, so one wrong topic disconnects the client for good.
         """
-        if not self._latest_mqtt_data:
-            _LOGGER.warning("No MQTT data available for pub topic detection")
-            return None
-        
-        # Check if we have device list data
-        if self._latest_mqtt_data.get("cmdType") == "user:device:list":
-            cmd_data = self._latest_mqtt_data.get("cmdData", {})
-            devices = cmd_data.get("devices", [])
-            
-            for device in devices:
-                if str(device.get("deviceId")) == str(device_id):
-                    # Check for pubTopics first
-                    pub_topics = device.get("pubTopics", [])
-                    if pub_topics:
-                        _LOGGER.debug("Found pubTopic for device %s: %s", device_id, pub_topics[0])
-                        return pub_topics[0]
-                    
-                    # Fallback: construct from subTopic pattern
-                    sub_topics = device.get("subTopics", [])
-                    if sub_topics:
-                        # Format: app/WT10/216510650012434433/sub → app/WT10/216510650012434433/pub
-                        sub_topic = sub_topics[0]
-                        pub_topic = sub_topic.replace("/sub", "/pub")
-                        _LOGGER.debug("Constructed pubTopic from subTopic for device %s: %s", device_id, pub_topic)
-                        return pub_topic
-                    
-                    # Last fallback: device model pattern
-                    device_model = device.get("deviceModel")
-                    if device_model:
-                        pub_topic = f"app/{device_model}/{device_id}/pub"
-                        _LOGGER.debug("Constructed pubTopic from model for device %s: %s", device_id, pub_topic)
-                        return pub_topic
-        
-        # Ultimate fallback: standard format (may not work for all models)
-        fallback_topic = f"app/device/{device_id}/pub"
-        _LOGGER.warning("Using fallback pubTopic for device %s: %s", device_id, fallback_topic)
-        return fallback_topic
+        pub_topic = self._device_pub_topics.get(str(device_id))
+        if not pub_topic:
+            _LOGGER.error("No publish topic known yet for device %s", device_id)
+        return pub_topic
 
     async def async_disconnect_mqtt(self):
         """Disconnect MQTT client."""

@@ -1,3 +1,11 @@
+# ThermoMaven Control
+
+A fork of [djiesr/ThermoMaven-ha](https://github.com/djiesr/ThermoMaven-ha) (MIT), with thanks to its authors. It keeps the `thermomaven` domain, and everything below still applies.
+
+**What's different:** commands go to the topic the device list named for each device. Upstream looks that up in the latest MQTT message, so after any status report it publishes to a guessed topic, the broker drops the connection, and the command is sent again on every reconnect, so the client never recovers and no command gets through.
+
+---
+
 # ThermoMaven Home Assistant Integration
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

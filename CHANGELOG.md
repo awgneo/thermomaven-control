@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [1.4.10] - 2026-11-01 (fork)
+
+### Fixed
+- Commands keep the publish topic from the device list, instead of reading the latest message and guessing a topic that makes the broker drop the connection in a loop.
+
 ## [1.4.9] - 2026-03-14 🌍
 
 ### 🐛 Fix MQTT broker for European countries (UK, FR, DE, etc.)
