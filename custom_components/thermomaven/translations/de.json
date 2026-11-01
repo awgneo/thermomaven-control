@@ -1,0 +1,101 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ThermoMaven Einrichtung",
+        "description": "Geben Sie Ihre ThermoMaven-Anmeldedaten ein",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort",
+          "region": "Land/Region"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zur ThermoMaven-API fehlgeschlagen",
+      "invalid_auth": "Ungültige E-Mail oder Passwort",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Dieses Konto ist bereits konfiguriert"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "probe_1": {
+        "name": "Sonde 1"
+      },
+      "probe_2": {
+        "name": "Sonde 2"
+      },
+      "probe_3": {
+        "name": "Sonde 3"
+      },
+      "probe_4": {
+        "name": "Sonde 4"
+      },
+      "battery": {
+        "name": "Batterie"
+      },
+      "probe_1_battery": {
+        "name": "Batterie Sonde 1"
+      },
+      "probe_2_battery": {
+        "name": "Batterie Sonde 2"
+      },
+      "probe_3_battery": {
+        "name": "Batterie Sonde 3"
+      },
+      "probe_4_battery": {
+        "name": "Batterie Sonde 4"
+      },
+      "area_1": {
+        "name": "Bereich 1 Spitze"
+      },
+      "area_2": {
+        "name": "Bereich 2"
+      },
+      "area_3": {
+        "name": "Bereich 3"
+      },
+      "area_4": {
+        "name": "Bereich 4"
+      },
+      "area_5": {
+        "name": "Bereich 5 Griff"
+      },
+      "ambient_temp": {
+        "name": "Umgebungstemperatur"
+      },
+      "target_temp": {
+        "name": "Zieltemperatur"
+      },
+      "total_cook_time": {
+        "name": "Gesamte Garzeit"
+      },
+      "current_cook_time": {
+        "name": "Aktuelle Garzeit"
+      },
+      "remaining_cook_time": {
+        "name": "Verbleibende Garzeit"
+      },
+      "cooking_mode": {
+        "name": "Garmodus"
+      },
+      "cooking_state": {
+        "name": "Garzustand",
+        "state": {
+          "cooking": "Garen",
+          "charged": "Geladen",
+          "charge": "Laden",
+          "idle": "Inaktiv",
+          "standby": "Bereitschaft"
+        }
+      },
+      "wifi_rssi": {
+        "name": "WiFi-Signal"
+      }
+    }
+  }
+}
+

@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ThermoMaven Setup",
+        "description": "Enter your ThermoMaven account credentials",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "region": "Country/Region"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to ThermoMaven API",
+      "invalid_auth": "Invalid email or password",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This account is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "state": {
+          "offline": "Déconnecté",
+          "unknown": "Inconnu"
+        }
+      },
+      "battery": {
+        "state": {
+          "offline": "Déconnecté",
+          "unknown": "Inconnu"
+        }
+      }
+    }
+  },
+  "services": {
+    "sync_devices": {
+      "name": "Synchroniser les appareils",
+      "description": "Force la synchronisation de la liste des thermomètres ThermoMaven. Utilise ce service si tes appareils ne sont pas détectés automatiquement ou après avoir allumé un nouveau thermomètre."
+    }
+  }
+}
+

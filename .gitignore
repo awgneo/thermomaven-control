@@ -1,0 +1,22 @@
+# Ignore AI agent data
+.agent/
+
+# flow test's reports
+.test/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# MacOS
+.DS_Store

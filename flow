@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# thermomaven-control: a Home Assistant integration for ThermoMaven wireless thermometers
+# ==============================================================================
+# A Python project managed with uv: 'flow test' runs its pytest suite (test/) through uv.
+
+source ./flows/base
+source ./flows/cell/base
+
+# Dependencies
+FLOWS_DEPENDENCIES+=(uv)
+
+# Hooks
+# In CI, 'flow ci test' installs the project and its dev dependencies first (uv.lock, as locked)
+CI_SETUP_HOOKS+=(thermomaven-packages)
+
+thermomaven-packages() {
+  uv sync --frozen
+}
+
+# Lints the integration and its tests with ruff
+thermomaven-lint() {
+  uv run ruff check custom_components test || abort "ruff found problems" 2
+  success "Lint passed"
+}
+
+# ------------------------------------------------------------------------------
+# Registration
+# ------------------------------------------------------------------------------
+
+thermomaven-usage() {
+  echo "lint|Lint the integration and its tests (ruff)"
+}
+
+thermomaven-flow() {
+  case "$1" in
+    lint) thermomaven-lint; return $? ;;
+    *) return 127 ;;
+  esac
+}
+
+flows-register "thermomaven" true
+flows-dispatch "$@"

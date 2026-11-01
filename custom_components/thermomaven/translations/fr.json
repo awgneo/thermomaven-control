@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration ThermoMaven",
+        "description": "Entrez vos identifiants ThermoMaven",
+        "data": {
+          "email": "Email",
+          "password": "Mot de passe",
+          "region": "Pays/Région"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Échec de connexion à l'API ThermoMaven",
+      "invalid_auth": "Email ou mot de passe invalide",
+      "unknown": "Erreur inattendue"
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "probe_1": {
+        "name": "Sonde 1"
+      },
+      "probe_2": {
+        "name": "Sonde 2"
+      },
+      "probe_3": {
+        "name": "Sonde 3"
+      },
+      "probe_4": {
+        "name": "Sonde 4"
+      },
+      "battery": {
+        "name": "Batterie"
+      },
+      "probe_1_battery": {
+        "name": "Batterie Sonde 1"
+      },
+      "probe_2_battery": {
+        "name": "Batterie Sonde 2"
+      },
+      "probe_3_battery": {
+        "name": "Batterie Sonde 3"
+      },
+      "probe_4_battery": {
+        "name": "Batterie Sonde 4"
+      },
+      "area_1": {
+        "name": "Zone 1 Pointe"
+      },
+      "area_2": {
+        "name": "Zone 2"
+      },
+      "area_3": {
+        "name": "Zone 3"
+      },
+      "area_4": {
+        "name": "Zone 4"
+      },
+      "area_5": {
+        "name": "Zone 5 Poignée"
+      },
+      "ambient_temp": {
+        "name": "Température Ambiante"
+      },
+      "target_temp": {
+        "name": "Température Cible"
+      },
+      "total_cook_time": {
+        "name": "Temps Total de Cuisson"
+      },
+      "current_cook_time": {
+        "name": "Temps de Cuisson Actuel"
+      },
+      "remaining_cook_time": {
+        "name": "Temps de Cuisson Restant"
+      },
+      "cooking_mode": {
+        "name": "Mode de Cuisson"
+      },
+      "cooking_state": {
+        "name": "État de Cuisson",
+        "state": {
+          "cooking": "Cuisson",
+          "charged": "Chargé",
+          "charge": "En Charge",
+          "idle": "Inactif",
+          "standby": "En Attente"
+        }
+      },
+      "wifi_rssi": {
+        "name": "Signal WiFi"
+      }
+    },
+    "climate": {
+      "probe_1_control": {
+        "name": "Contrôle Sonde 1"
+      },
+      "probe_2_control": {
+        "name": "Contrôle Sonde 2"
+      },
+      "probe_3_control": {
+        "name": "Contrôle Sonde 3"
+      },
+      "probe_4_control": {
+        "name": "Contrôle Sonde 4"
+      }
+    }
+  }
+}

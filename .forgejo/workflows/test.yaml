@@ -1,0 +1,39 @@
+name: Test thermomaven-control
+
+# Every pushed branch is tested in castle, the only cell (flows: 'flow ci test'), which reports the
+# commit's flow/test status and the branch's failing-tests issue. This file's presence also gates
+# 'flow merge' (and main's branch protection) on those results.
+#
+# The job runs in cellular/testing (uv and Python) as castle's default CI account (the forge bot's
+# Secrets); thermomaven-control needs nothing else from the cluster.
+on:
+  push:
+    branches-ignore:
+      - main
+    tags-ignore:
+      - '**'
+
+# A branch's newer push cancels its older run
+concurrency:
+  group: test-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Tests run in the cells that test (the organization's TESTING, which flow seed sets from the cell's
+    # values); elsewhere Forgejo skips the job before any pod exists
+    if: vars.TESTING == 'true'
+    runs-on: testing
+    steps:
+      - name: Checkout the pushed commit
+        run: |
+          # As this job's pod account: the cell's forge bot token
+          TOKEN=$(kubectl get secret "forge-cellular-$ENVIRONMENT" -o jsonpath='{.data.token}' | base64 -d)
+          git config --global http.extraHeader "Authorization: token $TOKEN"
+          git clone --recurse-submodules --jobs 4 --branch ${{ github.ref_name }} ${{ github.server_url }}/${{ github.repository }} .
+          git checkout --quiet ${{ github.sha }}
+          git submodule update --quiet --recursive
+
+      - name: Test and report
+        # A failing run's whole report becomes the branch's failing-tests issue
+        run: ./flow ci test

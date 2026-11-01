@@ -1,0 +1,38 @@
+Gestion des appareils :
+
+/app/device/bind - Lier un appareil
+/app/device/unbind - Délier un appareil
+/app/device/modify - Modifier un appareil
+/app/device/name/modify - Modifier le nom
+/app/device/model/list - Liste des modèles
+/app/device/share/* - Partage d'appareils
+
+Gestion utilisateur :
+
+/app/user/get - Obtenir info utilisateur
+/app/user/register - Inscription
+/app/user/modify - Modifier profil
+/app/user/setting/get - Paramètres
+/app/user/setting/modify - Modifier paramètres
+
+Notifications :
+
+/app/notification/setting/device/list
+/app/notification/setting/device/modify
+
+OTA (mises à jour) :
+
+/app/ota/version/device/check
+
+Nouveaux endpoints trouvés :
+
+/app/dict/list - Liste de dictionnaires/config
+/app/mqtt/cert/apply - Certificats MQTT
+/app/notification/page - Notifications
+/app/history/page - Historique (probablement les données de température)
+/app/history/modify - Modifier historique
+/app/history/delete - Supprimer historique
+/app/collection/list - Collections
+/app/recipe/detail - Détails recette
+/app/log/print - Logs
+

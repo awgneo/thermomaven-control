@@ -1,0 +1,4 @@
+sync_devices:
+  name: Synchroniser les appareils
+  description: Force une re-synchronisation complète de la liste des thermomètres (demande une nouvelle liste au cloud puis rafraîchit). À utiliser après avoir allumé un thermomètre pour récupérer ses données sans recharger l'intégration.
+
