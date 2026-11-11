@@ -11,7 +11,7 @@ source ./flows/cell/base
 FLOWS_DEPENDENCIES+=(uv)
 
 # Hooks
-# In CI, 'flow ci test' installs the project and its dev dependencies first (uv.lock, as locked)
+# In CI, 'flow test' installs the project and its dev dependencies first (uv.lock, as locked)
 CI_SETUP_HOOKS+=(thermomaven-packages)
 
 thermomaven-packages() {

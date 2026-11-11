@@ -1,6 +1,6 @@
 name: Test thermomaven-control
 
-# Every pushed branch is tested in castle, the only cell (flows: 'flow ci test'), which reports the
+# Every pushed branch is tested in castle, the only cell (flows: 'flow test', reporting in a runner), which reports the
 # commit's flow/test status and the branch's failing-tests issue. This file's presence also gates
 # 'flow merge' (and main's branch protection) on those results.
 #
@@ -36,4 +36,4 @@ jobs:
 
       - name: Test and report
         # A failing run's whole report becomes the branch's failing-tests issue
-        run: ./flow ci test
+        run: ./flow test
